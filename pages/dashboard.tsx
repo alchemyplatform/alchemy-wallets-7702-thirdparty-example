@@ -2,19 +2,15 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import Head from "next/head";
-import { createWalletClient, custom, Hex } from "viem";
+import { createWalletClient, custom, type Hex, type SignedAuthorization } from "viem";
 import { useSignAuthorization } from "@privy-io/react-auth";
 import {
   AuthorizationRequest,
   SmartAccountSigner,
   WalletClientSigner,
 } from "@aa-sdk/core";
-import {
-  createModularAccountV2Client,
-  ModularAccountV2Client,
-} from "@account-kit/smart-contracts";
 import { sepolia, alchemy } from "@account-kit/infra";
-import { SignedAuthorization } from "viem/experimental";
+import { createSmartWalletClient, SmartWalletClient } from "@account-kit/wallet-client";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -31,23 +27,42 @@ export default function DashboardPage() {
     }
   }, [ready, authenticated, router]);
 
-  async function delegateandauth() {
+  async function delegateAndSend() {
     if (!client) {
       console.error("No client yet");
       return;
     }
+
     setIsLoading(true);
     try {
-      const uoHash = await client.sendUserOperation({
-        uo: {
-          target: "0xc0ffee254729296a45a3885639AC7E10F9d54979",
-          value: 0n,
-          data: "0x0",
+      const result = await client.sendCalls({
+        capabilities: {
+          eip7702Auth: true,
         },
-      });
-      const txnHash = await client.waitForUserOperationTransaction(uoHash);
-      setTransactionHash(txnHash);
-      console.log("transaction hash", txnHash);
+        from: embeddedWallet!.address as Hex,
+        calls: [
+          {
+            to: "0x0000000000000000000000000000000000000000",
+            data: "0x",
+          },
+        ],
+      })
+      if (!result.preparedCallIds || result.preparedCallIds.length === 0) {
+        console.error("Transaction failed: no prepared call IDs");
+        return;
+      }
+      const callId = result.preparedCallIds[0];
+
+
+      const status = await client.waitForCallsStatus({ id: callId });
+      if (status.receipts && status.receipts[0]) {
+        const txnHash = status.receipts[0].transactionHash;
+        setTransactionHash(txnHash);
+        console.log("transaction hash", txnHash);
+      } else {
+        console.error("Transaction failed: no receipt");
+      }
+
     } catch (error) {
       console.error("Transaction failed:", error);
     } finally {
@@ -102,7 +117,7 @@ export default function DashboardPage() {
                 </div>
               )}
               <button
-                onClick={delegateandauth}
+                onClick={delegateAndSend}
                 disabled={isLoading}
                 className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition-colors ${
                   isLoading
@@ -151,7 +166,7 @@ const usePrivy7702 = () => {
   const { signAuthorization } = useSignAuthorization();
   const { wallets } = useWallets();
   const [signer, setSigner] = useState<SmartAccountSigner>();
-  const [client, setClient] = useState<ModularAccountV2Client>();
+  const [client, setClient] = useState<SmartWalletClient>();
   const embeddedWallet = wallets.find((x) => x.walletClientType === "privy");
 
   useEffect(() => {
@@ -197,15 +212,14 @@ const usePrivy7702 = () => {
 
       setSigner(signer);
 
-      const client = await createModularAccountV2Client({
+      const client = createSmartWalletClient({
         chain: sepolia,
         transport: alchemy({
           apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || "",
         }),
         signer,
-        mode: "7702",
         policyId: process.env.NEXT_PUBLIC_ALCHEMY_POLICY_ID || "",
-      });
+      })
 
       setClient(client);
     })();
