@@ -19,7 +19,7 @@
     "@account-kit/wallet-client": "^4.62.2",
     "@headlessui/react": "^1.7.3",
     "@heroicons/react": "^2.0.12",
-    "@privy-io/react-auth": "^2.25.0",
+    "@privy-io/react-auth": "3.1.0-beta-20251002171613",
     "@privy-io/server-auth": "^1.32.3",
     "@privy-io/public-api": "^2.45.1",
     "@tailwindcss/forms": "^0.5.3",
